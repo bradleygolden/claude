@@ -138,6 +138,136 @@ This library uses [Claude Code Hooks](https://docs.anthropic.com/en/docs/claude-
 
 The hook system is built on Elixir behaviours, making it easy to extend with your own custom hooks.
 
+## Creating Custom Hooks
+
+You can extend Claude with your own custom hooks by creating a `.claude.exs` file in your project root:
+
+```elixir
+# .claude.exs
+%{
+  enabled: true,
+  hooks: [
+    %{
+      module: MyApp.Hooks.TodoChecker,
+      enabled: true,
+      config: %{
+        todo_pattern: ~r/TODO|FIXME|HACK/,
+        fail_on_todos: false
+      }
+    }
+  ]
+}
+```
+
+### Writing a Custom Hook
+
+Custom hooks must implement the `Claude.Hooks.Hook.Behaviour`:
+
+```elixir
+defmodule MyApp.Hooks.TodoChecker do
+  @behaviour Claude.Hooks.Hook.Behaviour
+
+  @impl true
+  def config do
+    %Claude.Hooks.Hook{
+      type: "command",
+      command: "mix claude hooks run post_tool_use.todo_checker",
+      matcher: "Edit|MultiEdit|Write"
+    }
+  end
+
+  @impl true
+  def description do
+    "Checks for TODO comments in edited files"
+  end
+
+  @impl true
+  def run(tool_name, json_params) do
+    # Your hook logic here
+    :ok
+  end
+end
+```
+
+For a complete, production-ready example, see `Claude.Hooks.PostToolUse.RelatedFilesChecker` in this library's source code.
+
+### Hook Configuration
+
+Hooks can receive configuration from `.claude.exs`:
+
+```elixir
+# In your hook's run/2 function:
+config = Claude.Hooks.Registry.hook_config(__MODULE__)
+pattern = Map.get(config, :todo_pattern, ~r/TODO/)
+```
+
+### Glob Pattern Support
+
+The built-in `RelatedFilesChecker` hook and custom hooks can use glob patterns to dynamically find related files. This is useful for suggesting files that might need updates when certain files change.
+
+```elixir
+# .claude.exs
+%{
+  hooks: [
+    %{
+      module: Claude.Hooks.PostToolUse.RelatedFilesChecker,
+      enabled: true,
+      config: %{
+        rules: [
+          # When any lib file changes, suggest running all test files
+          %{
+            pattern: "lib/**/*.ex",
+            suggests: [
+              %{file: "test/**/*_test.exs", reason: "related test files might need updates"}
+            ]
+          },
+          # When config.ex changes, suggest checking all files in the project
+          %{
+            pattern: "lib/claude/config.ex",
+            suggests: [
+              %{file: "lib/claude/**/*.ex", reason: "files that might use Config module"}
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+Supported glob patterns:
+- `*` - Match any characters except `/`
+- `**` - Match any characters including `/` (recursive)
+- `?` - Match single character
+- `[abc]` - Match character set
+- `{foo,bar}` - Match alternatives
+
+When a glob pattern is used in the `suggests` field, all matching files will be suggested as related files that might need review or updates.
+
+### Event Types
+
+You can configure when your hook runs by setting the `event_type` in `.claude.exs`:
+
+```elixir
+%{
+  module: MyApp.Hooks.CustomHook,
+  enabled: true,
+  event_type: "PreToolUse",  # Specify when the hook runs
+  config: %{...}
+}
+```
+
+Available event types:
+- **PostToolUse** - Runs after Claude uses a tool (Edit, Write, etc.)
+- **PreToolUse** - Runs before Claude uses a tool
+- **UserPromptSubmit** - Runs when the user submits a prompt
+
+If `event_type` is not specified, it will be inferred from your module's namespace (e.g., a module under `MyApp.Hooks.PostToolUse.*` will default to "PostToolUse")
+
+### Real-World Example
+
+The `RelatedFilesChecker` hook (included in this library) demonstrates how to create custom hooks. It suggests related files that might need updates when certain files are modified. Check out `lib/claude/hooks/post_tool_use/related_files_checker.ex` to see a complete implementation.
+
 ## Contributing
 
 We welcome contributions! The codebase follows standard Elixir conventions:
