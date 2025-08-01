@@ -212,9 +212,7 @@ defmodule Mix.Tasks.Claude.Install do
   end
 
   defp add_claude_exs_to_formatter(igniter) do
-    # Check if .formatter.exs exists
     if Igniter.exists?(igniter, ".formatter.exs") do
-      # Read the current formatter file to check if .claude.exs is already included
       igniter
       |> Igniter.add_notice("""
       To format .claude.exs files, add \".claude.exs\" to your formatter inputs:
@@ -335,19 +333,15 @@ defmodule Mix.Tasks.Claude.Install do
   end
 
   defp format_meta_agent_for_template do
-    # Format the Meta Agent config for inclusion in the template
     inspect(@meta_agent_config, pretty: true, limit: :infinity, printable_limit: :infinity)
   end
 
   defp format_meta_agent_for_notice do
-    # Format the Meta Agent config for display in notices
-    # Build it manually to show proper formatting
     name = inspect(@meta_agent_config.name)
     description = inspect(@meta_agent_config.description)
     tools = inspect(@meta_agent_config.tools)
     prompt = @meta_agent_config.prompt
 
-    # Manually build the string to preserve formatting
     "    %{\n" <>
       "      name: #{name},\n" <>
       "      description: #{description},\n" <>
@@ -815,7 +809,9 @@ defmodule Mix.Tasks.Claude.Install do
           name: name,
           description: config.description,
           prompt: enhanced_prompt,
-          tools: config[:tools] || []
+          tools: config[:tools] || [],
+          model: config[:model],
+          color: config[:color]
         })
 
       {:ok, {name, relative_path, content}}
@@ -827,25 +823,55 @@ defmodule Mix.Tasks.Claude.Install do
     missing_keys = required_keys -- Map.keys(config)
 
     if missing_keys == [] do
-      # Validate tools if present
-      case config[:tools] do
-        nil ->
-          :ok
-
-        tools when is_list(tools) ->
-          if Enum.all?(tools, &is_atom/1) do
-            :ok
-          else
-            {:error, "Tools must be a list of atoms"}
-          end
-
-        _ ->
-          {:error, "Tools must be a list"}
+      with :ok <- validate_tools(config[:tools]),
+           :ok <- validate_model(config[:model]),
+           :ok <- validate_color(config[:color]) do
+        :ok
       end
     else
       {:error, "Missing required keys: #{inspect(missing_keys)}"}
     end
   end
+
+  defp validate_tools(nil), do: :ok
+
+  defp validate_tools(tools) when is_list(tools) do
+    if Enum.all?(tools, &is_atom/1) do
+      :ok
+    else
+      {:error, "Tools must be a list of atoms"}
+    end
+  end
+
+  defp validate_tools(_), do: {:error, "Tools must be a list"}
+
+  defp validate_model(nil), do: :ok
+
+  defp validate_model(model) when is_binary(model) do
+    if model in ["sonnet", "opus", "haiku", "inherit"] do
+      :ok
+    else
+      if Regex.match?(~r/^claude-\d+(-\d+)?-(opus|sonnet|haiku)(-\d+)?$/, model) do
+        :ok
+      else
+        {:error,
+         "Invalid model: #{model}. Must be one of: sonnet, opus, haiku, inherit, or a full Claude model name like claude-3-5-sonnet-20241022"}
+      end
+    end
+  end
+
+  defp validate_model(_), do: {:error, "Model must be a string"}
+
+  defp validate_color(nil), do: :ok
+
+  defp validate_color(color)
+       when color in ["red", "blue", "green", "yellow", "purple", "orange", "pink", "cyan"],
+       do: :ok
+
+  defp validate_color(color),
+    do:
+      {:error,
+       "Invalid color: #{color}. Must be one of: red, blue, green, yellow, purple, orange, pink, cyan"}
 
   defp maybe_add_usage_rules(config) do
     case config[:usage_rules] do
@@ -941,7 +967,6 @@ defmodule Mix.Tasks.Claude.Install do
   end
 
   defp generate_frontmatter(subagent) do
-    # Convert name to lowercase with hyphens as per Claude Code conventions
     name =
       subagent.name
       |> String.downcase()
@@ -954,7 +979,20 @@ defmodule Mix.Tasks.Claude.Install do
       "description: #{subagent.description}"
     ]
 
-    # Add tools line only if tools are specified
+    lines =
+      if Map.has_key?(subagent, :model) && subagent.model do
+        lines ++ ["model: #{subagent.model}"]
+      else
+        lines
+      end
+
+    lines =
+      if Map.has_key?(subagent, :color) && subagent.color do
+        lines ++ ["color: #{subagent.color}"]
+      else
+        lines
+      end
+
     lines =
       if subagent.tools != [] do
         tools_line =
