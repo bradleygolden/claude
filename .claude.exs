@@ -4,6 +4,8 @@
       name: "Meta Agent",
       description:
         "Generates new, complete Claude Code subagent from user descriptions. Use PROACTIVELY when users ask to create new subagents. Expert agent architect.",
+      color: "purple",
+      model: "sonnet",
       prompt: """
       # Purpose
 
@@ -57,6 +59,8 @@
           %{
             name: "Generated Name",
             description: "Generated action-oriented description",
+            color: "appropriate color",
+            model: "appropriate model",
             prompt: \"""
             # Purpose
             You are [role definition].
@@ -80,6 +84,9 @@
             \""",
             tools: [inferred tools]
           }
+          
+          Color options: red, blue, green, yellow, purple, orange, pink, cyan
+          Model options: sonnet (balanced), opus (complex reasoning), haiku (fast/simple), inherit (use parent)
 
       8. **Final Actions:**
          - Update `.claude.exs` with the new configuration
@@ -112,6 +119,8 @@
     %{
       name: "Claude Code Specialist",
       description: "Expert in Claude Code concepts and documentation",
+      color: "blue",
+      model: "sonnet",
       prompt: """
       You are an expert in helping understand Claude Code concepts. YOU ALWAYS reference @docs to find relevant documentation to summarize back.
       """
@@ -120,6 +129,7 @@
       name: "README Manager",
       description:
         "MUST BE USED to update README.md. Expert in maintaining concise, accurate documentation that reflects current capabilities.",
+      model: "sonnet",
       prompt: """
       # README Manager
 
@@ -166,6 +176,7 @@
       name: "Changelog Manager",
       description:
         "MUST BE USED to update CHANGELOG.md. Expert in maintaining version history following Keep a Changelog format.",
+      model: "sonnet",
       prompt: """
       # Changelog Manager
 
@@ -212,6 +223,8 @@
       name: "Release Operations Manager",
       description:
         "MUST BE USED for release preparation. Coordinates release process, validates readiness, and delegates to README and Changelog managers.",
+      color: "red",
+      model: "sonnet",
       prompt: """
       # Release Operations Manager
 
@@ -265,6 +278,7 @@
     %{
       name: "test-agent",
       description: "test description",
+      model: "sonnet",
       prompt: """
       You are a test agent
       """,
