@@ -1,0 +1,127 @@
+# Plugin System Cheatsheet
+
+## Quick Configuration
+
+```elixir
+# .claude.exs
+%{
+  plugins: [
+    Claude.Plugins.Base,     # Always include
+    Claude.Plugins.Phoenix,  # Auto-detects Phoenix projects
+    Claude.Plugins.Ash       # Auto-detects Ash projects
+  ]
+}
+```
+
+## Built-in Plugins
+
+| Plugin | Auto-Activates | Provides |
+|--------|----------------|----------|
+| **Base** | Always | Format/compile checks, pre-commit validation |
+| **ClaudeCode** | Always | Claude Code docs, Meta Agent |
+| **Phoenix** | `:phoenix` dependency | Tidewave MCP, LiveView/Ecto rules, DaisyUI docs |
+| **Ash** | `:ash` dependency | Codegen validation, extension-specific usage rules |
+| **Webhook** | Manual | HTTP event reporting |
+| **Logging** | Manual | JSONL file logging |
+
+## Plugin Options
+
+```elixir
+%{
+  plugins: [
+    Claude.Plugins.Base,
+    {Claude.Plugins.Phoenix, include_daisyui?: false, port: 4001},
+    {Claude.Plugins.Webhook, url: "https://api.example.com/hooks"}
+  ]
+}
+```
+
+## Common Combinations
+
+**Phoenix Development:**
+```elixir
+%{plugins: [Claude.Plugins.Base, Claude.Plugins.Phoenix]}
+```
+
+**Ash Framework Development:**
+```elixir
+%{plugins: [Claude.Plugins.Base, Claude.Plugins.Ash]}
+```
+
+**Phoenix + Ash (Full Stack):**
+```elixir
+%{plugins: [Claude.Plugins.Base, Claude.Plugins.Phoenix, Claude.Plugins.Ash]}
+```
+
+**With Monitoring:**
+```elixir
+%{plugins: [Claude.Plugins.Base, Claude.Plugins.Logging]}
+```
+
+**Full Featured:**
+```elixir
+%{
+  plugins: [
+    Claude.Plugins.Base,
+    Claude.Plugins.Phoenix,
+    Claude.Plugins.Ash,
+    Claude.Plugins.Webhook
+  ]
+}
+```
+
+## Custom Plugin Template
+
+```elixir
+defmodule MyApp.CustomPlugin do
+  @behaviour Claude.Plugin
+  
+  def config(_opts) do
+    %{
+      hooks: %{stop: ["mix myapp.validate"]},
+      mcp_servers: [myserver: []]
+    }
+  end
+end
+```
+
+Usage:
+```elixir
+%{plugins: [Claude.Plugins.Base, MyApp.CustomPlugin]}
+```
+
+## Configuration Merging
+
+```elixir
+%{
+  plugins: [Claude.Plugins.Base],  # Plugin config
+  hooks: %{session_end: ["cleanup"]}  # Your additions
+}
+# Plugins take precedence over direct config
+```
+
+## Phoenix Auto-Detection
+
+When Phoenix plugin detects `:phoenix` dependency:
+- Sets up Tidewave MCP server
+- Adds LiveView/Ecto usage rules  
+- Includes DaisyUI component docs
+- Configures directory-specific memories
+
+## Ash Auto-Detection  
+
+When Ash plugin detects `:ash` dependency:
+- Runs `ash.codegen --check` after file changes
+- Applies extension-specific usage rules:
+  - `ash_postgres`: DB rules for `lib/app/` + `priv/repo/migrations`
+  - `ash_phoenix`: Web rules for `lib/app_web/`
+  - `ash_ai`: AI rules for `lib/app/`
+  - `ash_oban`: Job rules for `lib/app/`  
+  - `ash_json_api`: API rules for `lib/app_web/`
+
+## Troubleshooting
+
+**Plugin not loading?**
+- Check module name is correct
+- Verify it implements `Claude.Plugin` behaviour
+- Run `mix claude.install` after changes
