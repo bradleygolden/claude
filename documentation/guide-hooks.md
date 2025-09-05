@@ -1,58 +1,52 @@
-# Claude Hooks
+# Hooks Guide
 
-Claude provides a modern atom-based hook system that integrates with Claude Code to ensure your Elixir code is production-ready. The hooks use sensible defaults and can be configured with simple atom shortcuts.
+Claude hooks automatically check your code quality and prevent issues before they become problems.
 
-> 📋 **Quick Reference**: See the [Hooks Cheatsheet](../cheatsheets/hooks.cheatmd) for a concise reference of configuration options and patterns.
+## What Are Hooks?
 
-## Documentation
+Hooks are commands that run automatically when Claude Code performs actions:
+- **After editing files** → Check formatting and compilation
+- **Before git commits** → Validate everything is clean
+- **When sessions end** → Run cleanup tasks
 
-For complete documentation on Claude Code's hook system:
-- [Official Hooks Reference](https://docs.anthropic.com/en/docs/claude-code/hooks) - Complete API reference
-- [Hooks Guide](https://docs.anthropic.com/en/docs/claude-code/hooks-guide) - Getting started with examples
+## Quick Setup
 
-For a quick reference of all hook configurations, see the [Hook Configuration Cheatsheet](../cheatsheets/hooks.cheatmd).
-
-## What Claude Installs
-
-When you run `mix igniter.install claude`, it automatically sets up default hooks:
+Most users just need these three shortcuts:
 
 ```elixir
+# .claude.exs
 %{
   hooks: %{
-    post_tool_use: [:compile, :format],
+    post_tool_use: [:compile, :format],    # Check after edits
     # These only run on git commit commands
-    pre_tool_use: [:compile, :format, :unused_deps]
+    pre_tool_use: [:compile, :format, :unused_deps],  # Validate before commits
+    session_end: ["mix myapp.cleanup"]     # Optional cleanup
   }
 }
 ```
+
+Run `mix claude.install` to apply.
 
 This provides:
 1. **Immediate validation** - Checks formatting and compilation after file edits
 2. **Pre-commit validation** - Ensures clean code before commits, including unused dependency checks
 
-## Available Hook Atoms
+## The Three Magic Shortcuts
 
-Claude provides these atom shortcuts that expand to full hook configurations:
-
-### Available Hooks
-- **`:compile`** - Runs `mix compile --warnings-as-errors` with `halt_pipeline?: true` (stops on failure)
-  - For `stop`/`subagent_stop`: Uses `blocking?: false` to prevent infinite loops
-- **`:format`** - Runs `mix format --check-formatted` (checks only, doesn't auto-format)
-  - For `stop`/`subagent_stop`: Uses `blocking?: false` to prevent infinite loops
-- **`:unused_deps`** - Runs `mix deps.unlock --check-unused` (pre_tool_use on git commits only)
+| Shortcut | What It Does | When It Runs |
+|----------|--------------|--------------|
+| `:compile` | Runs `mix compile --warnings-as-errors` | After file edits, before commits |
+| `:format` | Runs `mix format --check-formatted` | After file edits, before commits |
+| `:unused_deps` | Checks for unused dependencies | Before git commits only |
 
 ## Hook Events
 
-Different hook events run at different times:
+Different events run at different times:
 
-- **`pre_tool_use`** - Before tool execution (can block tools)
-- **`post_tool_use`** - After tool execution completes successfully
-- **`user_prompt_submit`** - Before processing user prompts (can add context or block)
-- **`notification`** - When Claude needs permission or input is idle
-- **`stop`** - When Claude Code finishes responding (main agent)
-- **`subagent_stop`** - When a sub-agent finishes responding
-- **`pre_compact`** - Before context compaction (manual or automatic)
-- **`session_start`** - When Claude Code starts or resumes a session
+- **`post_tool_use`** - After Claude edits files (immediate feedback)
+- **`pre_tool_use`** - Before tools run (can block unsafe operations)
+- **`stop`** - When Claude finishes responding
+- **`session_end`** - When your Claude session ends (cleanup, logging, etc.)
 
 ## Best Practices
 
@@ -76,10 +70,27 @@ Different hook events run at different times:
 - Complex multi-step processes
 - Operations that might trigger additional work
 
-## Advanced Configuration
+## Common Patterns
 
-You can mix atom shortcuts with explicit configurations:
+**Basic Quality Checks:**
+```elixir
+%{
+  hooks: %{
+    post_tool_use: [:compile, :format]  # Fast feedback after edits
+  }
+}
+```
 
+**Pre-commit Protection:**
+```elixir
+%{
+  hooks: %{
+    pre_tool_use: [:compile, :format, :unused_deps]  # Block bad commits
+  }
+}
+```
+
+**Advanced Configuration:**
 ```elixir
 %{
   hooks: %{
@@ -96,6 +107,12 @@ You can mix atom shortcuts with explicit configurations:
     post_tool_use: [
       {:compile, output: :full},  # WARNING: Can cause context overflow
       :format                     # Default :none - recommended
+    ],
+
+    # Session cleanup
+    session_end: [
+      "mix myapp.cleanup",
+      "mix myapp.log_session_stats"
     ]
   }
 }
@@ -134,80 +151,60 @@ Even with `blocking?: false`, failed stop hooks generate persistent notification
 }
 ```
 
-### Hook Options
+## Custom Commands
 
-- **`:when`** - Tool/event matcher (atoms, strings, or lists)
-- **`:command`** - Additional command pattern for Bash (string or regex)
-- **`:halt_pipeline?`** - Stop subsequent hooks on failure (default: false)
-- **`:blocking?`** - Treat non-zero exit as blocking error (default: true)
-- **`:env`** - Environment variables as a map
-- **`:output`** - Control output verbosity (default: `:none`)
-  - `:none` - Only show pipeline summary on failures (prevents context overflow) **[Recommended]**
-  - `:full` - Show complete hook output plus pipeline summary (use sparingly - can cause context issues)
-
-## Hook Event Reporting (Experimental)
-
-Claude supports sending hook events to external systems for monitoring and integration.
-
-### Webhook Reporter
-
-**Note: This feature is experimental and the API may change in future releases.**
-
-Send hook events to HTTP endpoints:
+Add your own commands alongside the shortcuts:
 
 ```elixir
 %{
-  reporters: [
-    {:webhook,
-      url: "https://example.com/webhook",
-      headers: %{"Authorization" => "Bearer token"},
-      timeout: 5000,
-      retry_count: 3
-    }
-  ]
+  hooks: %{
+    post_tool_use: [
+      :compile,
+      :format,
+      {"credo suggest", blocking?: false}  # Non-blocking suggestion
+    ],
+    pre_tool_use: [
+      {"mix test --failed", when: "Bash", command: ~r/^git commit/}
+    ]
+  }
 }
 ```
 
-The webhook reporter sends the raw Claude Code hook event data as JSON, including:
-- Event type and timestamp
-- Tool information (for tool-related events)
-- Session and project context
+## Event Reporting
+
+Track what happens with reporters:
+
+**Webhook (real-time):**
+```elixir
+%{
+  reporters: [{:webhook, url: "https://api.example.com/claude-events"}],
+  hooks: %{
+    post_tool_use: [:compile, :format]
+  }
+}
+```
+
+**File logging:**
+```elixir
+%{
+  reporters: [{:jsonl, file: "claude-events.jsonl"}],
+  hooks: %{
+    session_end: ["mix myapp.cleanup"]
+  }
+}
+```
 
 ## How It Works
 
-1. **Configuration**: Define hooks in `.claude.exs` using atoms, strings, or tuples with options
-2. **Installation**: `mix claude.install` creates `.claude/settings.json` with a dispatcher command
-3. **Execution**: Claude Code runs `mix claude.hooks.run <event>` passing JSON via stdin
-4. **Expansion**: The dispatcher reads `.claude.exs` and expands atoms to full commands
-5. **Running**: Commands execute as Mix tasks (default) or shell commands (with "cmd " prefix)
-6. **Communication**: Hooks return exit codes only (0 = success, non-zero = failure, no JSON output)
-7. **Reporting**: Events are dispatched to configured reporters for external integration
+1. **You configure hooks** in `.claude.exs`
+2. **Claude Code runs your hooks** automatically
+3. **You get immediate feedback** when issues are found
+4. **Claude can fix problems** based on the feedback
 
-## Request a New Hook
+No manual work - it just happens.
 
-Have an idea for a new standardized hook that would be useful for Elixir development? We'd love to hear from you!
+## Need More?
 
-[Request a new hook →](https://github.com/bradleygolden/claude/issues/new?title=Hook%20Request:%20[Name]&body=**Hook%20Name:**%20%0A**Mix%20Task%20or%20Command:**%20%0A**Use%20Case:**%20%0A**Which%20Events:**%20%0A%0APlease%20describe%20what%20this%20hook%20would%20do%20and%20why%20it%20would%20be%20useful%20for%20Elixir%20developers.)
-
-Popular requests might be added as default hooks in future releases!
-
-## Troubleshooting
-
-**Hooks not running?**
-- Check `.claude/settings.json` exists and contains hook configuration
-- Verify `.claude.exs` has the correct hook definitions
-- Run `mix claude.install` to regenerate hook configuration
-- Use Claude Code's `/hooks` command to verify hooks are registered
-
-**Compilation/format errors not showing?**
-- Ensure hooks are defined for the right events (`post_tool_use`, `stop`, etc.)
-- Check that the `:compile` and `:format` atoms are included
-- Verify Mix is available in your PATH
-
-**Need help?**
-- 💬 [GitHub Discussions](https://github.com/bradleygolden/claude/discussions)
-- 🐛 [Issue Tracker](https://github.com/bradleygolden/claude/issues)
-
-## Learn More
-
-For more details on hook events, configuration, and advanced usage, see the [official documentation](https://docs.anthropic.com/en/docs/claude-code/hooks).
+- **Quick reference:** [Hooks Cheatsheet](../cheatsheets/hooks.cheatmd)
+- **Plugin integration:** [Plugin Guide](guide-plugins.md)
+- **Official docs:** [Claude Code Hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)
